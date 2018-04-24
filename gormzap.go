@@ -17,8 +17,9 @@ import (
 
 // Logger is a gorm logger implementation using zap.
 type Logger struct {
-	origin *zap.Logger
-	level  zapcore.Level
+	origin      *zap.Logger
+	level       zapcore.Level
+	encoderFunc RecordToFields
 }
 
 // LoggerOption is an option for Logger.
@@ -31,41 +32,40 @@ func WithLevel(level zapcore.Level) LoggerOption {
 	}
 }
 
+// WithRecordToFields returns Logger option that sets RecordToFields func which
+// encodes log Record to a slice of zap fields.
+//
+// This can be used to control field names or field values types.
+func WithRecordToFields(f RecordToFields) LoggerOption {
+	return func(l *Logger) {
+		l.encoderFunc = f
+	}
+}
+
 // New returns a new gorm logger implemented using zap.
 // By default it logs with debug level.
 func New(origin *zap.Logger, opts ...LoggerOption) *Logger {
-	l := &Logger{origin: origin, level: zap.DebugLevel}
+	l := &Logger{
+		origin:  origin,
+		level:   zap.DebugLevel,
+		encoderFunc: DefaultRecordToFields,
+	}
+
 	for _, o := range opts {
 		o(l)
 	}
+
 	return l
 }
 
 // Print implements gorm's logger interface.
 func (l *Logger) Print(values ...interface{}) {
 	rec := newRecord(values...)
-	l.origin.Check(l.level, rec.Message).Write(rec.ZapFields()...)
+	l.origin.Check(l.level, rec.Message).Write(l.encoderFunc(rec)...)
 }
 
-type record struct {
-	Message      string
-	Source       string
-	Duration     time.Duration
-	SQL          string
-	RowsAffected int64
-}
-
-func (r record) ZapFields() []zapcore.Field {
-	return []zapcore.Field{
-		zap.String("source", r.Source),
-		zap.Duration("duration", r.Duration),
-		zap.String("sql", r.SQL),
-		zap.Int64("rows_affected", r.RowsAffected),
-	}
-}
-
-func newRecord(values ...interface{}) record {
-	var rec record
+func newRecord(values ...interface{}) Record {
+	var rec Record
 	rec.Message = "gorm query"
 
 	if len(values) < 1 {
