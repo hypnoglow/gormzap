@@ -17,9 +17,9 @@ import (
 
 // Logger is a gorm logger implementation using zap.
 type Logger struct {
-	origin  *zap.Logger
-	level   zapcore.Level
-	fielder RecordFielder
+	origin      *zap.Logger
+	level       zapcore.Level
+	encoderFunc RecordToFields
 }
 
 // LoggerOption is an option for Logger.
@@ -32,13 +32,13 @@ func WithLevel(level zapcore.Level) LoggerOption {
 	}
 }
 
-// WithRecordFielder returns Logger option that sets RecordFielder which
+// WithRecordToFields returns Logger option that sets RecordToFields func which
 // encodes log Record to a slice of zap fields.
 //
 // This can be used to control field names or field values types.
-func WithRecordFielder(f RecordFielder) LoggerOption {
+func WithRecordToFields(f RecordToFields) LoggerOption {
 	return func(l *Logger) {
-		l.fielder = f
+		l.encoderFunc = f
 	}
 }
 
@@ -48,7 +48,7 @@ func New(origin *zap.Logger, opts ...LoggerOption) *Logger {
 	l := &Logger{
 		origin:  origin,
 		level:   zap.DebugLevel,
-		fielder: DefaultRecordFielder,
+		encoderFunc: DefaultRecordToFields,
 	}
 
 	for _, o := range opts {
@@ -61,7 +61,7 @@ func New(origin *zap.Logger, opts ...LoggerOption) *Logger {
 // Print implements gorm's logger interface.
 func (l *Logger) Print(values ...interface{}) {
 	rec := newRecord(values...)
-	l.origin.Check(l.level, rec.Message).Write(l.fielder.RecordFields(rec)...)
+	l.origin.Check(l.level, rec.Message).Write(l.encoderFunc(rec)...)
 }
 
 func newRecord(values ...interface{}) Record {

@@ -15,22 +15,15 @@ type Record struct {
 	RowsAffected int64
 }
 
-// RecordFielder can encode gormzap Record into a slice of zap fields.
-type RecordFielder interface {
-	RecordFields(r Record) []zapcore.Field
-}
+// RecordToFields func can encode gormzap Record into a slice of zap fields.
+type RecordToFields func(r Record) []zapcore.Field
 
-// DefaultRecordFielder is default encoder for gormzap log records.
-var DefaultRecordFielder RecordFielder = defaultFielder{}
-
-type defaultFielder struct{}
-
-// RecordFields implements RecordFielder.
-func (defaultFielder) RecordFields(r Record) []zapcore.Field {
+// DefaultRecordToFields is default encoder func for gormzap log records.
+func DefaultRecordToFields(r Record) []zapcore.Field {
 	return []zapcore.Field{
-		zap.String("source", r.Source),
-		zap.Duration("duration", r.Duration),
-		zap.String("sql", r.SQL),
-		zap.Int64("rows_affected", r.RowsAffected),
+		zap.String("sql.source", r.Source),
+		zap.Duration("sql.duration", r.Duration),
+		zap.String("sql.query", r.SQL),
+		zap.Int64("sql.rows_affected", r.RowsAffected),
 	}
 }
