@@ -3,9 +3,8 @@ package gormzap_test
 import (
 	"time"
 
-	"go.uber.org/zap"
-
 	"github.com/hypnoglow/gormzap"
+	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -17,7 +16,7 @@ func ExampleLogger() {
 	l.Print(
 		"sql",
 		"/foo/bar.go",
-		time.Second * 2,
+		time.Second*2,
 		"SELECT * FROM foo WHERE id = ?",
 		[]interface{}{123},
 		int64(2),
@@ -36,7 +35,7 @@ func ExampleWithRecordToFields() {
 		gormzap.WithRecordToFields(func(r gormzap.Record) []zapcore.Field {
 			return []zapcore.Field{
 				zap.String("caller", r.Source),
-				zap.Float32("duration_ms", float32(r.Duration.Nanoseconds() / 1000) / 1000),
+				zap.Float32("duration_ms", float32(r.Duration.Nanoseconds()/1000)/1000),
 				zap.String("query", r.SQL),
 				zap.Int64("rows_affected", r.RowsAffected),
 			}
@@ -46,7 +45,7 @@ func ExampleWithRecordToFields() {
 	l.Print(
 		"sql",
 		"/foo/bar.go",
-		time.Millisecond * 200,
+		time.Millisecond*200,
 		"SELECT * FROM foo WHERE id = ?",
 		[]interface{}{123},
 		int64(2),

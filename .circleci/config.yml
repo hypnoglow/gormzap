@@ -4,21 +4,32 @@
 version: 2
 
 jobs:
-  "test:1.9":
-    docker:
-      - image: circleci/golang:1.9
-    working_directory: /go/src/github.com/hypnoglow/gormzap
-    steps:
-      - run: go test -v ./...
-  "test:1.10":
+  "dep":
     docker:
       - image: circleci/golang:1.10
     working_directory: /go/src/github.com/hypnoglow/gormzap
     steps:
+      - checkout
+      - run: curl -sSL https://github.com/golang/dep/releases/download/v0.4.1/dep-linux-amd64 -o /go/bin/dep
+      - run: chmod +x /go/bin/dep
+      - run: /go/bin/dep init -v
+      - persist_to_workspace:
+          root: /go/src/github.com/hypnoglow
+          paths:
+            - gormzap
+  "test":
+    docker:
+      - image: circleci/golang:1.10
+    working_directory: /go/src/github.com/hypnoglow/gormzap
+    steps:
+      - attach_workspace:
+          at: /go/src/github.com/hypnoglow
       - run: go test -v ./...
 workflows:
   version: 2
   common-pipeline:
     jobs:
-      - "test:1.9":
-      - "test:1.10":
+      - dep
+      - test:
+          requires:
+            - dep
