@@ -7,9 +7,12 @@
 package gormzap
 
 import (
+	"database/sql/driver"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
+	"unicode"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -46,8 +49,8 @@ func WithRecordToFields(f RecordToFields) LoggerOption {
 // By default it logs with debug level.
 func New(origin *zap.Logger, opts ...LoggerOption) *Logger {
 	l := &Logger{
-		origin:  origin,
-		level:   zap.DebugLevel,
+		origin:      origin,
+		level:       zap.DebugLevel,
 		encoderFunc: DefaultRecordToFields,
 	}
 
@@ -100,15 +103,8 @@ func formatSQL(sql string, values []interface{}) string {
 	}
 
 	for i := size - 1; i >= 0; i-- {
-		// TODO: implement proper formatting for specific types.
-		var s string
-		switch values[i].(type) {
-		default:
-			s = fmt.Sprintf("%v", values[i])
-		}
-
 		replacements[(size-i-1)*2] = indexFunc(i)
-		replacements[(size-i-1)*2+1] = s
+		replacements[(size-i-1)*2+1] = formatValue(values[i])
 	}
 
 	r := strings.NewReplacer(replacements...)
@@ -122,3 +118,51 @@ func formatNumbered(index int) string {
 func formatQuestioned(index int) string {
 	return "?"
 }
+
+func formatValue(value interface{}) string {
+	indirectValue := reflect.Indirect(reflect.ValueOf(value))
+	if !indirectValue.IsValid() {
+		return "NULL"
+	}
+
+	value = indirectValue.Interface()
+
+	switch v := value.(type) {
+	case time.Time:
+		return fmt.Sprintf("'%v'", v.Format("2006-01-02 15:04:05"))
+	case []byte:
+		s := string(v)
+		if isPrintable(s) {
+			return redactLong(fmt.Sprintf("'%s'", s))
+		}
+		return "'<binary>'"
+	case int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64:
+		return fmt.Sprintf("%d", v)
+	case driver.Valuer:
+		if dv, err := v.Value(); err == nil && dv != nil {
+			return formatValue(dv)
+		}
+		return "NULL"
+	default:
+		return redactLong(fmt.Sprintf("'%v'", value))
+	}
+}
+
+func isPrintable(s string) bool {
+	for _, r := range s {
+		if !unicode.IsPrint(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func redactLong(s string) string {
+	if len(s) > maxLen {
+		return "'<redacted>'"
+	}
+	return s
+}
+
+const maxLen = 255
