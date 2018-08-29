@@ -75,6 +75,13 @@ func newRecord(values ...interface{}) Record {
 		return rec
 	}
 
+	// Check if values represent an error.
+	if len(values) == 2 {
+		rec.Source = fmt.Sprintf("%v", values[0])
+		rec.Message = fmt.Sprintf("%v", values[1])
+		return rec
+	}
+
 	rec.Source = fmt.Sprintf("%v", values[1])
 
 	level := values[0]
