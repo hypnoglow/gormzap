@@ -29,6 +29,8 @@ type Logger struct {
 type LoggerOption func(*Logger)
 
 // WithLevel returns Logger option that sets level for gorm logs.
+// It affects only general logs, e.g. those that contain SQL queries.
+// Errors will be logged with error level independently of this option.
 func WithLevel(level zapcore.Level) LoggerOption {
 	return func(l *Logger) {
 		l.level = level
@@ -63,38 +65,69 @@ func New(origin *zap.Logger, opts ...LoggerOption) *Logger {
 
 // Print implements gorm's logger interface.
 func (l *Logger) Print(values ...interface{}) {
-	rec := newRecord(values...)
-	l.origin.Check(l.level, rec.Message).Write(l.encoderFunc(rec)...)
+	rec := l.newRecord(values...)
+	l.origin.Check(rec.Level, rec.Message).Write(l.encoderFunc(rec)...)
 }
 
-func newRecord(values ...interface{}) Record {
-	var rec Record
-	rec.Message = "gorm query"
+func (l *Logger) newRecord(values ...interface{}) Record {
+	// See https://github.com/jinzhu/gorm/blob/master/main.go#L774
+	// for info how gorm logs messages.
 
-	if len(values) < 1 {
-		return rec
+	if len(values) < 2 {
+		// Should this ever happen?
+		return Record{
+			Message: fmt.Sprint(values...),
+			Level:   l.level,
+		}
 	}
 
-	// Check if values represent an error.
+	// Handle https://github.com/jinzhu/gorm/blob/32455088f24d6b1e9a502fb8e40fdc16139dbea8/main.go#L716
 	if len(values) == 2 {
-		rec.Source = fmt.Sprintf("%v", values[0])
-		rec.Message = fmt.Sprintf("%v", values[1])
-		return rec
+		return Record{
+			Message: fmt.Sprintf("%v", values[1]),
+			Source:  fmt.Sprintf("%v", values[0]),
+			Level:   zapcore.ErrorLevel,
+		}
 	}
-
-	rec.Source = fmt.Sprintf("%v", values[1])
 
 	level := values[0]
-	switch level {
-	case "sql":
-		rec.Duration = values[2].(time.Duration)
-		rec.SQL = formatSQL(values[3].(string), values[4].([]interface{}))
-		rec.RowsAffected = values[5].(int64)
-	default:
-		rec.Message = fmt.Sprint(values[2:]...)
+
+	// Handle https://github.com/jinzhu/gorm/blob/32455088f24d6b1e9a502fb8e40fdc16139dbea8/main.go#L778
+	if level == "log" {
+		// By default, assume this is a user log.
+		// See: https://github.com/jinzhu/gorm/blob/32455088f24d6b1e9a502fb8e40fdc16139dbea8/scope.go#L96
+		// If this is an error log, we set level to error.
+		// See: https://github.com/jinzhu/gorm/blob/32455088f24d6b1e9a502fb8e40fdc16139dbea8/main.go#L718
+		logLevel := l.level
+		if _, ok := values[2].(error); ok {
+			logLevel = zapcore.ErrorLevel
+		}
+
+		return Record{
+			Message: fmt.Sprint(values[2:]...),
+			Source:  fmt.Sprintf("%v", values[1]),
+			Level:   logLevel,
+		}
 	}
 
-	return rec
+	// Handle https://github.com/jinzhu/gorm/blob/32455088f24d6b1e9a502fb8e40fdc16139dbea8/main.go#L786
+	if level == "sql" {
+		return Record{
+			Message:      "gorm query",
+			Source:       fmt.Sprintf("%v", values[1]),
+			Duration:     values[2].(time.Duration),
+			SQL:          formatSQL(values[3].(string), values[4].([]interface{})),
+			RowsAffected: values[5].(int64),
+			Level:        l.level,
+		}
+	}
+
+	// Should this ever happen?
+	return Record{
+		Message: fmt.Sprint(values[2:]...),
+		Source:  fmt.Sprintf("%v", values[1]),
+		Level:   l.level,
+	}
 }
 
 func formatSQL(sql string, values []interface{}) string {
